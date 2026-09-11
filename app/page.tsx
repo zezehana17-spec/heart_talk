@@ -3,13 +3,27 @@
 import { useState } from 'react';
 import VideoRoom from '../components/VideoRoom';
 
+function makeGuestName() {
+  return `Guest-${Math.random().toString(36).slice(2, 7)}`;
+}
+
 export default function Home() {
-  const [name, setName] = useState('');
-  const [room, setRoom] = useState('hearttalk-test');
+  const [guestName, setGuestName] = useState('');
   const [entered, setEntered] = useState(false);
 
+  function enterTestRoom() {
+    setGuestName(makeGuestName());
+    setEntered(true);
+  }
+
   if (entered) {
-    return <VideoRoom name={name || 'Guest'} room={room || 'hearttalk-test'} onLeave={() => setEntered(false)} />;
+    return (
+      <VideoRoom
+        name={guestName}
+        room="hearttalk-test"
+        onLeave={() => setEntered(false)}
+      />
+    );
   }
 
   return (
@@ -19,33 +33,13 @@ export default function Home() {
         <h1>Heart Talk</h1>
         <p className="subtitle">실시간 1:1 Speaking Room 기술 테스트</p>
 
-        <div className="formGroup">
-          <label htmlFor="name">이름</label>
-          <input
-            id="name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="예: Hana"
-          />
-        </div>
-
-        <div className="formGroup">
-          <label htmlFor="room">Room</label>
-          <input
-            id="room"
-            value={room}
-            onChange={(e) => setRoom(e.target.value)}
-            placeholder="hearttalk-test"
-          />
-        </div>
-
-        <button className="primaryButton" onClick={() => setEntered(true)}>
-          JOIN ROOM
+        <button className="primaryButton" onClick={enterTestRoom}>
+          바로 테스트 입장
         </button>
 
         <div className="statusBox">
-          <strong>2차 확인 목표</strong>
-          <span>두 기기에서 같은 Room으로 접속해 얼굴과 음성이 연결되는지 확인</span>
+          <strong>로그인 없이 테스트</strong>
+          <span>노트북과 휴대폰에서 이 버튼을 누르면 같은 테스트 Room으로 들어갑니다.</span>
         </div>
       </section>
     </main>
