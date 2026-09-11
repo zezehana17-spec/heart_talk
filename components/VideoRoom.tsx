@@ -1,6 +1,12 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useState } from 'react';
+import {
+  LiveKitRoom,
+  RoomAudioRenderer,
+  VideoConference,
+} from '@livekit/components-react';
+import '@livekit/components-styles';
 
 type Props = {
   name: string;
@@ -9,41 +15,32 @@ type Props = {
 };
 
 export default function VideoRoom({ name, room, onLeave }: Props) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const [status, setStatus] = useState('준비 중...');
-  const [joined, setJoined] = useState(false);
+  const [token, setToken] = useState('');
+  const [serverUrl, setServerUrl] = useState('');
+  const [status, setStatus] = useState('카메라와 마이크를 연결할 준비가 됐어요.');
+  const [loading, setLoading] = useState(false);
 
-  async function joinZoomRoom() {
+  async function joinLiveKitRoom() {
     try {
-      setStatus('Zoom 방에 연결 중...');
+      setLoading(true);
+      setStatus('LiveKit 방에 연결 중...');
 
-      const tokenResponse = await fetch('/api/zoom-token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionName: room }),
-      });
+      const params = new URLSearchParams({ room, username: name });
+      const response = await fetch(`/api/livekit-token?${params.toString()}`);
+      const data = await response.json();
 
-      const tokenData = await tokenResponse.json();
-      if (!tokenResponse.ok) throw new Error(tokenData.error || 'Token error');
+      if (!response.ok) {
+        throw new Error(data.error || 'LiveKit token error');
+      }
 
-      const { default: uitoolkit } = await import('@zoom/videosdk-ui-toolkit');
-
-      if (!containerRef.current) throw new Error('Video container not ready');
-
-      const config = {
-        videoSDKJWT: tokenData.token,
-        sessionName: room,
-        userName: name,
-        sessionPasscode: 'hearttalk',
-        features: ['video', 'audio', 'users', 'settings'],
-      } as any;
-
-      await uitoolkit.joinSession(containerRef.current, config);
-      setJoined(true);
+      setToken(data.token);
+      setServerUrl(data.serverUrl);
       setStatus('연결됨');
     } catch (error) {
       console.error(error);
       setStatus(error instanceof Error ? error.message : '연결에 실패했어요.');
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -58,16 +55,48 @@ export default function VideoRoom({ name, room, onLeave }: Props) {
         <button className="secondaryButton" onClick={onLeave}>나가기</button>
       </section>
 
+      <section className="guideBar">
+        <div>
+          <span className="guideLabel">TODAY&apos;S QUESTION</span>
+          <strong>What have you been into lately?</strong>
+        </div>
+        <div>
+          <span className="guideLabel">TARGET EXPRESSION</span>
+          <strong>I&apos;ve been really into ~ lately.</strong>
+        </div>
+        <div className="timerBox">
+          <strong>10:00</strong>
+          <button className="extendButton" type="button">+5분 연장</button>
+        </div>
+      </section>
+
       <section className="videoCard">
-        {!joined && (
+        {!token ? (
           <div className="joinPanel">
-            <h2>카메라와 마이크 연결 테스트</h2>
-            <p>다른 기기에서도 같은 Room 이름으로 접속하면 서로 얼굴과 음성을 확인할 수 있어요.</p>
-            <button className="primaryButton" onClick={joinZoomRoom}>START VIDEO</button>
+            <h2>1:1 얼굴 + 음성 연결 테스트</h2>
+            <p>다른 기기에서도 같은 Room 이름으로 접속하면 같은 영상방에 들어갑니다.</p>
+            <button className="primaryButton" onClick={joinLiveKitRoom} disabled={loading}>
+              {loading ? 'CONNECTING...' : 'START VIDEO'}
+            </button>
             <span className="roomStatus">{status}</span>
           </div>
+        ) : (
+          <div className="livekitContainer" data-lk-theme="default">
+            <LiveKitRoom
+              token={token}
+              serverUrl={serverUrl}
+              video
+              audio
+              connect
+              data-lk-theme="default"
+              style={{ height: '100%' }}
+              onDisconnected={onLeave}
+            >
+              <VideoConference />
+              <RoomAudioRenderer />
+            </LiveKitRoom>
+          </div>
         )}
-        <div ref={containerRef} className="zoomContainer" />
       </section>
     </main>
   );
