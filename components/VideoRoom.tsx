@@ -44,6 +44,12 @@ export default function VideoRoom({ name, room, onLeave }: Props) {
     }
   }
 
+  function handleDisconnected() {
+    setToken('');
+    setServerUrl('');
+    setStatus('연결이 끊겼어요. START VIDEO를 눌러 다시 연결해보세요.');
+  }
+
   return (
     <main className="roomShell">
       <section className="roomHeader">
@@ -74,7 +80,7 @@ export default function VideoRoom({ name, room, onLeave }: Props) {
         {!token ? (
           <div className="joinPanel">
             <h2>1:1 얼굴 + 음성 연결 테스트</h2>
-            <p>다른 기기에서도 같은 Room 이름으로 접속하면 같은 영상방에 들어갑니다.</p>
+            <p>노트북과 휴대폰이 같은 Heart Talk 테스트 방으로 들어갑니다.</p>
             <button className="primaryButton" onClick={joinLiveKitRoom} disabled={loading}>
               {loading ? 'CONNECTING...' : 'START VIDEO'}
             </button>
@@ -90,7 +96,7 @@ export default function VideoRoom({ name, room, onLeave }: Props) {
               connect
               data-lk-theme="default"
               style={{ height: '100%' }}
-              onDisconnected={onLeave}
+              onDisconnected={handleDisconnected}
             >
               <VideoConference />
               <RoomAudioRenderer />
