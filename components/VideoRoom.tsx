@@ -14,6 +14,20 @@ type Props = {
   onLeave: () => void;
 };
 
+type Feedback = {
+  cleanedTranscript: string;
+  strengths: string;
+  corrections: Array<{
+    original: string;
+    better: string;
+    reason: string;
+  }>;
+  targetExpressionUsed: boolean | null;
+  retrySentence: string;
+};
+
+const TARGET_EXPRESSION = "I've been really into ~ lately.";
+
 export default function VideoRoom({ name, room, onLeave }: Props) {
   const [token, setToken] = useState('');
   const [serverUrl, setServerUrl] = useState('');
@@ -21,15 +35,19 @@ export default function VideoRoom({ name, room, onLeave }: Props) {
   const [loading, setLoading] = useState(false);
   const [errorDetail, setErrorDetail] = useState('');
 
-  // POC only: browser speech recognition. Production will move to server-side STT.
+  // POC: browser speech recognition. Raw text stays hidden during the session.
   const recognitionRef = useRef<any>(null);
   const sttShouldRunRef = useRef(false);
   const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [sttRunning, setSttRunning] = useState(false);
   const [transcript, setTranscript] = useState('');
-  const [interimTranscript, setInterimTranscript] = useState('');
   const [sttError, setSttError] = useState('');
   const [sttStatus, setSttStatus] = useState('대기 중');
+
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
+  const [feedbackError, setFeedbackError] = useState('');
+  const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const [showOriginal, setShowOriginal] = useState(false);
 
   async function joinLiveKitRoom() {
     try {
@@ -97,7 +115,7 @@ export default function VideoRoom({ name, room, onLeave }: Props) {
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
     if (!SpeechRecognitionCtor) {
-      setSttError('이 브라우저는 현재 STT 테스트를 지원하지 않아요. Chrome에서 다시 테스트해 주세요.');
+      setSttError('이 기기/브라우저에서는 무료 브라우저 음성 인식이 지원되지 않아요.');
       return null;
     }
 
@@ -108,32 +126,23 @@ export default function VideoRoom({ name, room, onLeave }: Props) {
 
     recognition.onstart = () => {
       setSttRunning(true);
-      setSttStatus('듣는 중 🎙️');
+      setSttStatus('음성을 텍스트로 기록하고 있어요 🎙️');
       setSttError('');
-    };
-
-    recognition.onspeechstart = () => {
-      setSttStatus('말소리 감지됨 · 변환 중...');
     };
 
     recognition.onresult = (event: any) => {
       let finalText = '';
-      let interimText = '';
 
       for (let i = event.resultIndex; i < event.results.length; i += 1) {
-        const text = event.results[i][0]?.transcript || '';
         if (event.results[i].isFinal) {
-          finalText += text;
-        } else {
-          interimText += text;
+          finalText += event.results[i][0]?.transcript || '';
         }
       }
 
       if (finalText.trim()) {
         setTranscript((prev) => `${prev}${prev ? ' ' : ''}${finalText.trim()}`);
-        setSttStatus('텍스트 입력됨 ✅ · 계속 듣는 중');
+        setSttStatus('음성을 텍스트로 기록하고 있어요 🎙️');
       }
-      setInterimTranscript(interimText.trim());
     };
 
     recognition.onerror = (event: any) => {
@@ -141,24 +150,22 @@ export default function VideoRoom({ name, room, onLeave }: Props) {
       const error = event.error || 'unknown error';
 
       if (error === 'no-speech' || error === 'aborted') {
-        setSttStatus('잠시 멈춤 · 자동 재연결 중...');
+        setSttStatus('기록을 이어가는 중...');
         return;
       }
 
       setSttError(`STT error: ${error}`);
-      setSttStatus('STT 오류');
+      setSttStatus('음성 기록 오류');
     };
 
     recognition.onend = () => {
-      setInterimTranscript('');
-
       if (!sttShouldRunRef.current) {
         setSttRunning(false);
-        setSttStatus('중지됨');
+        setSttStatus('기록 중지됨');
         return;
       }
 
-      setSttStatus('STT가 잠시 끊겨 자동 재연결 중...');
+      setSttStatus('기록을 이어가는 중...');
       restartTimerRef.current = setTimeout(() => {
         if (!sttShouldRunRef.current) return;
         try {
@@ -176,6 +183,9 @@ export default function VideoRoom({ name, room, onLeave }: Props) {
 
   function startStt() {
     setSttError('');
+    setFeedback(null);
+    setFeedbackError('');
+    setTranscript('');
     sttShouldRunRef.current = true;
 
     try {
@@ -187,7 +197,7 @@ export default function VideoRoom({ name, room, onLeave }: Props) {
 
       recognitionRef.current = recognition;
       recognition.start();
-      setSttStatus('STT 시작 중...');
+      setSttStatus('음성 기록 시작 중...');
     } catch (error) {
       console.error('STT start error:', error);
       sttShouldRunRef.current = false;
@@ -206,18 +216,47 @@ export default function VideoRoom({ name, room, onLeave }: Props) {
     try {
       recognitionRef.current?.stop?.();
     } catch {
-      // Ignore browser stop errors in this temporary POC.
+      // Ignore browser stop errors in this POC.
     }
     recognitionRef.current = null;
     setSttRunning(false);
-    setInterimTranscript('');
-    setSttStatus('중지됨');
+    setSttStatus('기록 중지됨');
   }
 
-  function clearTranscript() {
-    setTranscript('');
-    setInterimTranscript('');
-    setSttError('');
+  async function getAiFeedback() {
+    stopStt();
+    setFeedbackError('');
+    setFeedback(null);
+    setShowOriginal(false);
+
+    const rawTranscript = transcript.trim();
+    if (!rawTranscript) {
+      setFeedbackError('아직 기록된 영어 문장이 없어요. 먼저 음성 기록을 시작하고 말해보세요.');
+      return;
+    }
+
+    try {
+      setFeedbackLoading(true);
+      const response = await fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transcript: rawTranscript,
+          targetExpression: TARGET_EXPRESSION,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || 'AI 피드백을 만들 수 없어요.');
+      }
+
+      setFeedback(data.feedback as Feedback);
+    } catch (error) {
+      setFeedbackError(error instanceof Error ? error.message : 'AI 피드백 생성 실패');
+    } finally {
+      setFeedbackLoading(false);
+    }
   }
 
   return (
@@ -238,7 +277,7 @@ export default function VideoRoom({ name, room, onLeave }: Props) {
         </div>
         <div>
           <span className="guideLabel">TARGET EXPRESSION</span>
-          <strong>I&apos;ve been really into ~ lately.</strong>
+          <strong>{TARGET_EXPRESSION}</strong>
         </div>
         <div className="timerBox">
           <strong>10:00</strong>
@@ -289,34 +328,85 @@ export default function VideoRoom({ name, room, onLeave }: Props) {
 
             <div style={{ padding: 16, borderTop: '1px solid rgba(255,255,255,0.12)' }}>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                <strong>STT TEST · 내 목소리 → 텍스트</strong>
+                <strong>Speaking Record · POC</strong>
                 {!sttRunning ? (
-                  <button className="primaryButton" type="button" onClick={startStt}>START STT</button>
+                  <button className="primaryButton" type="button" onClick={startStt}>START RECORD</button>
                 ) : (
-                  <button className="secondaryButton" type="button" onClick={stopStt}>STOP STT</button>
+                  <button className="secondaryButton" type="button" onClick={stopStt}>STOP RECORD</button>
                 )}
-                <button className="secondaryButton" type="button" onClick={clearTranscript}>CLEAR</button>
+                <button className="primaryButton" type="button" onClick={getAiFeedback} disabled={feedbackLoading}>
+                  {feedbackLoading ? 'AI 정리 중...' : '세션 종료 · 결과 보기'}
+                </button>
               </div>
 
-              <p style={{ marginTop: 8, opacity: 0.75 }}>
-                상태: {sttStatus} · 테스트용 브라우저 STT입니다. 음성 파일은 저장하지 않습니다.
-              </p>
-
-              <div style={{ marginTop: 10, padding: 14, borderRadius: 12, background: 'rgba(255,255,255,0.08)', minHeight: 90, whiteSpace: 'pre-wrap' }}>
-                {transcript || interimTranscript ? (
-                  <>
-                    <span>{transcript}</span>
-                    {interimTranscript && <span style={{ opacity: 0.55 }}> {interimTranscript}</span>}
-                  </>
-                ) : (
-                  <span style={{ opacity: 0.55 }}>START STT를 누르고 영어로 말해보세요.</span>
-                )}
+              <div style={{ marginTop: 10, padding: 14, borderRadius: 12, background: 'rgba(255,255,255,0.08)' }}>
+                <strong>{sttStatus}</strong>
+                <p style={{ margin: '6px 0 0', opacity: 0.72 }}>
+                  대화 중에는 문장을 화면에 표시하지 않습니다. 음성 파일은 저장하지 않습니다.
+                </p>
               </div>
 
               {sttError && (
                 <div style={{ marginTop: 10, padding: 10, borderRadius: 10, background: 'rgba(255,255,255,0.08)', wordBreak: 'break-word' }}>
                   <strong>STT ERROR</strong>
                   <div>{sttError}</div>
+                </div>
+              )}
+
+              {feedbackError && (
+                <div style={{ marginTop: 10, padding: 10, borderRadius: 10, background: 'rgba(255,255,255,0.08)', wordBreak: 'break-word' }}>
+                  <strong>FEEDBACK ERROR</strong>
+                  <div>{feedbackError}</div>
+                </div>
+              )}
+
+              {feedback && (
+                <div style={{ marginTop: 16, display: 'grid', gap: 12 }}>
+                  <div style={{ padding: 14, borderRadius: 12, background: 'rgba(255,255,255,0.08)' }}>
+                    <strong>What I Said · 정리본</strong>
+                    <p style={{ marginBottom: 0, lineHeight: 1.6 }}>{feedback.cleanedTranscript}</p>
+                    <button
+                      className="secondaryButton"
+                      type="button"
+                      onClick={() => setShowOriginal((prev) => !prev)}
+                      style={{ marginTop: 8 }}
+                    >
+                      {showOriginal ? '원문 숨기기' : 'STT 원문 보기'}
+                    </button>
+                    {showOriginal && (
+                      <p style={{ marginTop: 10, opacity: 0.72, lineHeight: 1.6 }}>{transcript}</p>
+                    )}
+                  </div>
+
+                  <div style={{ padding: 14, borderRadius: 12, background: 'rgba(255,255,255,0.08)' }}>
+                    <strong>👍 잘한 점</strong>
+                    <p style={{ marginBottom: 0 }}>{feedback.strengths}</p>
+                  </div>
+
+                  {feedback.corrections.map((item, index) => (
+                    <div key={`${item.original}-${index}`} style={{ padding: 14, borderRadius: 12, background: 'rgba(255,255,255,0.08)' }}>
+                      <strong>✏️ A Little Better {index + 1}</strong>
+                      <p style={{ marginBottom: 4 }}><b>Original:</b> {item.original}</p>
+                      <p style={{ marginBottom: 4 }}><b>Better:</b> {item.better}</p>
+                      <p style={{ marginBottom: 0, opacity: 0.78 }}>{item.reason}</p>
+                    </div>
+                  ))}
+
+                  <div style={{ padding: 14, borderRadius: 12, background: 'rgba(255,255,255,0.08)' }}>
+                    <strong>❤️ Target Expression</strong>
+                    <p style={{ marginBottom: 0 }}>
+                      {feedback.targetExpressionUsed === null
+                        ? '이번 세션에는 Target Expression이 없었어요.'
+                        : feedback.targetExpressionUsed
+                          ? '사용했어요 ✅'
+                          : '이번에는 사용하지 않았어요. 다음 대화에서 한번 써보세요.'}
+                    </p>
+                  </div>
+
+                  <div style={{ padding: 14, borderRadius: 12, background: 'rgba(255,255,255,0.08)' }}>
+                    <strong>🎙️ Try Again</strong>
+                    <p style={{ marginBottom: 0, fontSize: 18 }}>{feedback.retrySentence}</p>
+                  </div>
                 </div>
               )}
             </div>
