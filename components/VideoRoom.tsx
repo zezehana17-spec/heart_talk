@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   LiveKitRoom,
   RoomAudioRenderer,
@@ -20,6 +20,14 @@ export default function VideoRoom({ name, room, onLeave }: Props) {
   const [status, setStatus] = useState('카메라와 마이크를 연결할 준비가 됐어요.');
   const [loading, setLoading] = useState(false);
   const [errorDetail, setErrorDetail] = useState('');
+
+  // POC only: browser speech recognition. We will replace this with server-side STT
+  // before production so both speakers can be captured reliably and stored by session_id.
+  const recognitionRef = useRef<any>(null);
+  const [sttRunning, setSttRunning] = useState(false);
+  const [transcript, setTranscript] = useState('');
+  const [interimTranscript, setInterimTranscript] = useState('');
+  const [sttError, setSttError] = useState('');
 
   async function joinLiveKitRoom() {
     try {
@@ -69,6 +77,7 @@ export default function VideoRoom({ name, room, onLeave }: Props) {
 
   function handleDisconnected(reason?: unknown) {
     console.error('Heart Talk disconnected:', reason);
+    stopStt();
     setToken('');
     setServerUrl('');
     setStatus('LiveKit 연결이 끊겼어요.');
@@ -79,6 +88,79 @@ export default function VideoRoom({ name, room, onLeave }: Props) {
     console.error('Heart Talk LiveKit error:', error);
     setStatus('LiveKit 서버 연결 실패');
     setErrorDetail(`${error.name}: ${error.message}`);
+  }
+
+  function startStt() {
+    setSttError('');
+
+    const SpeechRecognitionCtor =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognitionCtor) {
+      setSttError('이 브라우저는 현재 STT 테스트를 지원하지 않아요. Chrome에서 다시 테스트해 주세요.');
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognitionCtor();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+
+      recognition.onresult = (event: any) => {
+        let finalText = '';
+        let interimText = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i += 1) {
+          const text = event.results[i][0]?.transcript || '';
+          if (event.results[i].isFinal) {
+            finalText += text;
+          } else {
+            interimText += text;
+          }
+        }
+
+        if (finalText.trim()) {
+          setTranscript((prev) => `${prev}${prev ? ' ' : ''}${finalText.trim()}`);
+        }
+        setInterimTranscript(interimText.trim());
+      };
+
+      recognition.onerror = (event: any) => {
+        console.error('STT error:', event);
+        setSttError(`STT error: ${event.error || 'unknown error'}`);
+      };
+
+      recognition.onend = () => {
+        setSttRunning(false);
+        setInterimTranscript('');
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+      setSttRunning(true);
+    } catch (error) {
+      console.error('STT start error:', error);
+      setSttError(error instanceof Error ? error.message : 'STT를 시작할 수 없어요.');
+      setSttRunning(false);
+    }
+  }
+
+  function stopStt() {
+    try {
+      recognitionRef.current?.stop?.();
+    } catch {
+      // Ignore browser stop errors in this temporary POC.
+    }
+    recognitionRef.current = null;
+    setSttRunning(false);
+    setInterimTranscript('');
+  }
+
+  function clearTranscript() {
+    setTranscript('');
+    setInterimTranscript('');
+    setSttError('');
   }
 
   return (
@@ -124,26 +206,63 @@ export default function VideoRoom({ name, room, onLeave }: Props) {
             )}
           </div>
         ) : (
-          <div className="livekitContainer" data-lk-theme="default">
+          <div className="livekitContainer" data-lk-theme="default" style={{ overflow: 'auto' }}>
             <div style={{ padding: '8px 12px', fontSize: 14 }}>
               {status}
               {errorDetail && <div style={{ marginTop: 6, wordBreak: 'break-word' }}>ERROR: {errorDetail}</div>}
             </div>
-            <LiveKitRoom
-              token={token}
-              serverUrl={serverUrl}
-              video
-              audio
-              connect
-              data-lk-theme="default"
-              style={{ height: 'calc(100% - 44px)' }}
-              onConnected={handleConnected}
-              onDisconnected={handleDisconnected}
-              onError={handleError}
-            >
-              <VideoConference />
-              <RoomAudioRenderer />
-            </LiveKitRoom>
+
+            <div style={{ height: '60vh', minHeight: 360 }}>
+              <LiveKitRoom
+                token={token}
+                serverUrl={serverUrl}
+                video
+                audio
+                connect
+                data-lk-theme="default"
+                style={{ height: '100%' }}
+                onConnected={handleConnected}
+                onDisconnected={handleDisconnected}
+                onError={handleError}
+              >
+                <VideoConference />
+                <RoomAudioRenderer />
+              </LiveKitRoom>
+            </div>
+
+            <div style={{ padding: 16, borderTop: '1px solid rgba(255,255,255,0.12)' }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <strong>STT TEST · 내 목소리 → 텍스트</strong>
+                {!sttRunning ? (
+                  <button className="primaryButton" type="button" onClick={startStt}>START STT</button>
+                ) : (
+                  <button className="secondaryButton" type="button" onClick={stopStt}>STOP STT</button>
+                )}
+                <button className="secondaryButton" type="button" onClick={clearTranscript}>CLEAR</button>
+              </div>
+
+              <p style={{ marginTop: 8, opacity: 0.75 }}>
+                테스트용입니다. 음성 파일은 저장하지 않고 브라우저가 인식한 텍스트만 화면에 표시합니다.
+              </p>
+
+              <div style={{ marginTop: 10, padding: 14, borderRadius: 12, background: 'rgba(255,255,255,0.08)', minHeight: 90, whiteSpace: 'pre-wrap' }}>
+                {transcript || interimTranscript ? (
+                  <>
+                    <span>{transcript}</span>
+                    {interimTranscript && <span style={{ opacity: 0.55 }}> {interimTranscript}</span>}
+                  </>
+                ) : (
+                  <span style={{ opacity: 0.55 }}>START STT를 누르고 영어로 말해보세요.</span>
+                )}
+              </div>
+
+              {sttError && (
+                <div style={{ marginTop: 10, padding: 10, borderRadius: 10, background: 'rgba(255,255,255,0.08)', wordBreak: 'break-word' }}>
+                  <strong>STT ERROR</strong>
+                  <div>{sttError}</div>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </section>
