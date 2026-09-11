@@ -8,8 +8,10 @@
     "start": "next start"
   },
   "dependencies": {
-    "@zoom/videosdk-ui-toolkit": "latest",
-    "jose": "^6.1.0",
+    "@livekit/components-react": "latest",
+    "@livekit/components-styles": "latest",
+    "livekit-client": "latest",
+    "livekit-server-sdk": "latest",
     "next": "^15.5.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
