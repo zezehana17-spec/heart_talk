@@ -75,7 +75,8 @@ input:focus {
 }
 
 .primaryButton,
-.secondaryButton {
+.secondaryButton,
+.extendButton {
   border: 0;
   border-radius: 14px;
   font-weight: 800;
@@ -90,14 +91,23 @@ input:focus {
   color: white;
 }
 
+.primaryButton:disabled { opacity: .6; cursor: wait; }
+
 .secondaryButton {
   padding: 11px 16px;
   background: #edf3ef;
   color: #1f4c38;
 }
 
+.extendButton {
+  padding: 9px 12px;
+  background: #edf3ef;
+  color: #1f4c38;
+}
+
 .primaryButton:hover,
-.secondaryButton:hover { filter: brightness(0.96); }
+.secondaryButton:hover,
+.extendButton:hover { filter: brightness(0.96); }
 
 .statusBox {
   display: grid;
@@ -116,7 +126,7 @@ input:focus {
   min-height: 100vh;
   padding: 24px;
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto auto 1fr;
   gap: 18px;
 }
 
@@ -129,14 +139,40 @@ input:focus {
   gap: 16px;
 }
 
-.roomHeader h1 {
-  font-size: 32px;
+.roomHeader h1 { font-size: 32px; }
+.roomHeader p { margin: 4px 0 0; color: #657084; }
+
+.guideBar {
+  width: min(1200px, 100%);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1.2fr 1.2fr auto;
+  gap: 12px;
+  background: rgba(255,255,255,0.92);
+  border: 1px solid rgba(23,32,51,0.08);
+  border-radius: 18px;
+  padding: 14px 16px;
 }
 
-.roomHeader p {
-  margin: 4px 0 0;
-  color: #657084;
+.guideBar > div {
+  display: grid;
+  gap: 5px;
 }
+
+.guideLabel {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  color: #2c7a5a;
+}
+
+.timerBox {
+  display: flex !important;
+  align-items: center;
+  gap: 10px !important;
+}
+
+.timerBox strong { font-size: 20px; }
 
 .videoCard {
   width: min(1200px, 100%);
@@ -158,7 +194,20 @@ input:focus {
 .joinPanel h2 { margin-bottom: 8px; }
 .joinPanel p { color: #657084; line-height: 1.55; }
 .roomStatus { display: block; margin-top: 12px; color: #657084; font-size: 14px; }
-.zoomContainer { width: 100%; min-height: 62vh; border-radius: 18px; overflow: hidden; }
+
+.livekitContainer {
+  width: 100%;
+  min-height: 62vh;
+  height: 70vh;
+  border-radius: 18px;
+  overflow: hidden;
+  background: #101317;
+}
+
+@media (max-width: 760px) {
+  .guideBar { grid-template-columns: 1fr; }
+  .timerBox { justify-content: space-between; }
+}
 
 @media (max-width: 600px) {
   .card { padding: 24px; border-radius: 20px; }
@@ -167,5 +216,5 @@ input:focus {
   .roomHeader { align-items: flex-start; }
   .roomHeader h1 { font-size: 26px; }
   .videoCard { min-height: 72vh; padding: 10px; border-radius: 18px; }
-  .zoomContainer { min-height: 68vh; }
+  .livekitContainer { min-height: 68vh; height: 72vh; }
 }
