@@ -74,19 +74,30 @@ input:focus {
   box-shadow: 0 0 0 4px rgba(77,155,120,0.12);
 }
 
-.primaryButton {
-  width: 100%;
-  margin-top: 12px;
-  padding: 15px 18px;
+.primaryButton,
+.secondaryButton {
   border: 0;
   border-radius: 14px;
-  background: #1f7a53;
-  color: white;
   font-weight: 800;
   cursor: pointer;
 }
 
-.primaryButton:hover { filter: brightness(0.96); }
+.primaryButton {
+  width: 100%;
+  margin-top: 12px;
+  padding: 15px 18px;
+  background: #1f7a53;
+  color: white;
+}
+
+.secondaryButton {
+  padding: 11px 16px;
+  background: #edf3ef;
+  color: #1f4c38;
+}
+
+.primaryButton:hover,
+.secondaryButton:hover { filter: brightness(0.96); }
 
 .statusBox {
   display: grid;
@@ -101,7 +112,60 @@ input:focus {
 
 .statusBox strong { color: #1f4c38; }
 
+.roomShell {
+  min-height: 100vh;
+  padding: 24px;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 18px;
+}
+
+.roomHeader {
+  width: min(1200px, 100%);
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.roomHeader h1 {
+  font-size: 32px;
+}
+
+.roomHeader p {
+  margin: 4px 0 0;
+  color: #657084;
+}
+
+.videoCard {
+  width: min(1200px, 100%);
+  margin: 0 auto;
+  min-height: 70vh;
+  background: white;
+  border-radius: 24px;
+  padding: 18px;
+  box-shadow: 0 18px 60px rgba(23,32,51,0.10);
+  overflow: hidden;
+}
+
+.joinPanel {
+  width: min(520px, 100%);
+  margin: 40px auto 24px;
+  text-align: center;
+}
+
+.joinPanel h2 { margin-bottom: 8px; }
+.joinPanel p { color: #657084; line-height: 1.55; }
+.roomStatus { display: block; margin-top: 12px; color: #657084; font-size: 14px; }
+.zoomContainer { width: 100%; min-height: 62vh; border-radius: 18px; overflow: hidden; }
+
 @media (max-width: 600px) {
   .card { padding: 24px; border-radius: 20px; }
   h1 { font-size: 38px; }
+  .roomShell { padding: 14px; }
+  .roomHeader { align-items: flex-start; }
+  .roomHeader h1 { font-size: 26px; }
+  .videoCard { min-height: 72vh; padding: 10px; border-radius: 18px; }
+  .zoomContainer { min-height: 68vh; }
 }
