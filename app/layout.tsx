@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import '@zoom/videosdk-ui-toolkit/dist/videosdk-ui-toolkit.css';
 
 export const metadata: Metadata = {
   title: 'Heart Talk Test',
