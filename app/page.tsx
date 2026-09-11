@@ -1,10 +1,16 @@
 'use client';
 
 import { useState } from 'react';
+import VideoRoom from '../components/VideoRoom';
 
 export default function Home() {
   const [name, setName] = useState('');
   const [room, setRoom] = useState('hearttalk-test');
+  const [entered, setEntered] = useState(false);
+
+  if (entered) {
+    return <VideoRoom name={name || 'Guest'} room={room || 'hearttalk-test'} onLeave={() => setEntered(false)} />;
+  }
 
   return (
     <main className="shell">
@@ -33,16 +39,13 @@ export default function Home() {
           />
         </div>
 
-        <button
-          className="primaryButton"
-          onClick={() => alert(`다음 단계에서 Zoom Video SDK로 ${name || 'Guest'}님을 ${room} 방에 연결할게요.`)}
-        >
+        <button className="primaryButton" onClick={() => setEntered(true)}>
           JOIN ROOM
         </button>
 
         <div className="statusBox">
-          <strong>1차 확인 목표</strong>
-          <span>이 화면이 Vercel에서 정상 배포되는지 확인</span>
+          <strong>2차 확인 목표</strong>
+          <span>두 기기에서 같은 Room으로 접속해 얼굴과 음성이 연결되는지 확인</span>
         </div>
       </section>
     </main>
