@@ -21,13 +21,15 @@ export default function VideoRoom({ name, room, onLeave }: Props) {
   const [loading, setLoading] = useState(false);
   const [errorDetail, setErrorDetail] = useState('');
 
-  // POC only: browser speech recognition. We will replace this with server-side STT
-  // before production so both speakers can be captured reliably and stored by session_id.
+  // POC only: browser speech recognition. Production will move to server-side STT.
   const recognitionRef = useRef<any>(null);
+  const sttShouldRunRef = useRef(false);
+  const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [sttRunning, setSttRunning] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [interimTranscript, setInterimTranscript] = useState('');
   const [sttError, setSttError] = useState('');
+  const [sttStatus, setSttStatus] = useState('대기 중');
 
   async function joinLiveKitRoom() {
     try {
@@ -90,63 +92,117 @@ export default function VideoRoom({ name, room, onLeave }: Props) {
     setErrorDetail(`${error.name}: ${error.message}`);
   }
 
-  function startStt() {
-    setSttError('');
-
+  function createRecognition() {
     const SpeechRecognitionCtor =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
     if (!SpeechRecognitionCtor) {
       setSttError('이 브라우저는 현재 STT 테스트를 지원하지 않아요. Chrome에서 다시 테스트해 주세요.');
-      return;
+      return null;
     }
 
-    try {
-      const recognition = new SpeechRecognitionCtor();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = 'en-US';
+    const recognition = new SpeechRecognitionCtor();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
 
-      recognition.onresult = (event: any) => {
-        let finalText = '';
-        let interimText = '';
+    recognition.onstart = () => {
+      setSttRunning(true);
+      setSttStatus('듣는 중 🎙️');
+      setSttError('');
+    };
 
-        for (let i = event.resultIndex; i < event.results.length; i += 1) {
-          const text = event.results[i][0]?.transcript || '';
-          if (event.results[i].isFinal) {
-            finalText += text;
-          } else {
-            interimText += text;
-          }
+    recognition.onspeechstart = () => {
+      setSttStatus('말소리 감지됨 · 변환 중...');
+    };
+
+    recognition.onresult = (event: any) => {
+      let finalText = '';
+      let interimText = '';
+
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        const text = event.results[i][0]?.transcript || '';
+        if (event.results[i].isFinal) {
+          finalText += text;
+        } else {
+          interimText += text;
         }
+      }
 
-        if (finalText.trim()) {
-          setTranscript((prev) => `${prev}${prev ? ' ' : ''}${finalText.trim()}`);
-        }
-        setInterimTranscript(interimText.trim());
-      };
+      if (finalText.trim()) {
+        setTranscript((prev) => `${prev}${prev ? ' ' : ''}${finalText.trim()}`);
+        setSttStatus('텍스트 입력됨 ✅ · 계속 듣는 중');
+      }
+      setInterimTranscript(interimText.trim());
+    };
 
-      recognition.onerror = (event: any) => {
-        console.error('STT error:', event);
-        setSttError(`STT error: ${event.error || 'unknown error'}`);
-      };
+    recognition.onerror = (event: any) => {
+      console.error('STT error:', event);
+      const error = event.error || 'unknown error';
 
-      recognition.onend = () => {
+      if (error === 'no-speech' || error === 'aborted') {
+        setSttStatus('잠시 멈춤 · 자동 재연결 중...');
+        return;
+      }
+
+      setSttError(`STT error: ${error}`);
+      setSttStatus('STT 오류');
+    };
+
+    recognition.onend = () => {
+      setInterimTranscript('');
+
+      if (!sttShouldRunRef.current) {
         setSttRunning(false);
-        setInterimTranscript('');
-      };
+        setSttStatus('중지됨');
+        return;
+      }
+
+      setSttStatus('STT가 잠시 끊겨 자동 재연결 중...');
+      restartTimerRef.current = setTimeout(() => {
+        if (!sttShouldRunRef.current) return;
+        try {
+          recognition.start();
+        } catch (error) {
+          console.error('STT restart error:', error);
+          setSttError(error instanceof Error ? error.message : 'STT 자동 재연결 실패');
+          setSttRunning(false);
+        }
+      }, 350);
+    };
+
+    return recognition;
+  }
+
+  function startStt() {
+    setSttError('');
+    sttShouldRunRef.current = true;
+
+    try {
+      const recognition = createRecognition();
+      if (!recognition) {
+        sttShouldRunRef.current = false;
+        return;
+      }
 
       recognitionRef.current = recognition;
       recognition.start();
-      setSttRunning(true);
+      setSttStatus('STT 시작 중...');
     } catch (error) {
       console.error('STT start error:', error);
+      sttShouldRunRef.current = false;
       setSttError(error instanceof Error ? error.message : 'STT를 시작할 수 없어요.');
       setSttRunning(false);
+      setSttStatus('시작 실패');
     }
   }
 
   function stopStt() {
+    sttShouldRunRef.current = false;
+    if (restartTimerRef.current) {
+      clearTimeout(restartTimerRef.current);
+      restartTimerRef.current = null;
+    }
     try {
       recognitionRef.current?.stop?.();
     } catch {
@@ -155,6 +211,7 @@ export default function VideoRoom({ name, room, onLeave }: Props) {
     recognitionRef.current = null;
     setSttRunning(false);
     setInterimTranscript('');
+    setSttStatus('중지됨');
   }
 
   function clearTranscript() {
@@ -242,7 +299,7 @@ export default function VideoRoom({ name, room, onLeave }: Props) {
               </div>
 
               <p style={{ marginTop: 8, opacity: 0.75 }}>
-                테스트용입니다. 음성 파일은 저장하지 않고 브라우저가 인식한 텍스트만 화면에 표시합니다.
+                상태: {sttStatus} · 테스트용 브라우저 STT입니다. 음성 파일은 저장하지 않습니다.
               </p>
 
               <div style={{ marginTop: 10, padding: 14, borderRadius: 12, background: 'rgba(255,255,255,0.08)', minHeight: 90, whiteSpace: 'pre-wrap' }}>
